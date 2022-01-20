@@ -8,13 +8,15 @@
 
 ### HTTP Range Request Header
 
-需要使用HTTP的Range请求头
+UnityWebRequest中，设置Range请求头的方式
 
 ```C#
 var LocalFileSize = new System.IO.FileInfo(path).Length;
-// 请求服务器，下载本地未下载的部分
-// 格式的意思是，下载 LocalFileSize到文件末尾的所有字节
+// “bytes=<range-start>-”格式的意思是，请求从range-start到文件结尾的所有bytes
+// 这里就是从本地已下载文件大小，请求到文件末尾的所有bytes
 unityWebRequest.SetRequestHeader("Range", "bytes=" + LocalFileSize + "-");
+// 请求服务器，执行下载
+unityWebRequest.SendWebRequest();
 ```
 
 请求头Range的格式参考：
