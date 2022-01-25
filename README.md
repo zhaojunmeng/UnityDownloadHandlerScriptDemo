@@ -22,7 +22,7 @@ unityWebRequest.SendWebRequest();
 请求头Range的格式参考：
 <https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Range>
 
-### 实现流程图
+### 实现流程
 
 断点续传原理比较简单
 
@@ -37,18 +37,17 @@ unityWebRequest.SendWebRequest();
 
 ### 不推荐的方式
 
-不继承的方式是不推荐的，代码如下
-这里的问题主要是GC，真机实测，下载过程中，内存会持续增长，文件越大内存增长越大。
-下载的文件过大，甚至会引起OOM(out of memory)崩溃。
+不继承DownloadHandlerScript的方式是不推荐的，代码如下
+
 
 ```C#
+    // 前面省略细节
     var req = UnityWebRequest.Get(fileUrl);
-    req.SetRequestHeader("Range", "bytes=" + fileLength + "-" + totalLength);
+    req.SetRequestHeader("Range", "bytes=" + fileLength + "-");
     var op = req.SendWebRequest();
 
     var index = 0;
-
-        while (!op.isDone)
+    while (!op.isDone)
     {
         yield return null;
         byte[] buff = req.downloadHandler.data;
@@ -59,10 +58,14 @@ unityWebRequest.SendWebRequest();
             index += length;
             fileLength += length;
 
-            onProgress((ulong)fileLength);
+            onProgress(fileLength);
         }
     }
+    // 后面省略细节
 ```
+
+这里的问题主要是GC，真机实测，下载过程中，内存会持续增长，文件越大内存增长越大。
+下载的文件过大，甚至会引起OOM(out of memory)崩溃。
 
 ### 推荐的方式
 
