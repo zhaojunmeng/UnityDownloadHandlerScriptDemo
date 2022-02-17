@@ -48,12 +48,15 @@ unityWebRequest.SendWebRequest();
 
 通过搜索，网上能找到的UnityWebRequest断点续传代码模板，大概两种的实现方式：
 
-* 继承DownloadHandlerScript类的方式
-* 不继承直接使用UnityWebRequest的方式。
+* 不继承DownloadHandlerScript, 直接使用 UnityWebRequest.downloadHandler.data 的方式。
+* 继承 DownloadHandlerScript 类的方式
 
 ### 不推荐的方式（有严重的GC问题）
 
-不继承DownloadHandlerScript的方式是不推荐的，代码如下
+不继承DownloadHandlerScript, 直接使用 UnityWebRequest.downloadHandler.data的方式是不推荐的，核心原因是下载多大的文件，就会分配多大的内存！
+而Unity的Mono内存，被撑高之后是无法回落的。下载的文件过大，甚至会引起OOM(out of memory)崩溃。
+
+代码如下
 
 ```C#
     // 前面省略细节
@@ -61,14 +64,17 @@ unityWebRequest.SendWebRequest();
     req.SetRequestHeader("Range", "bytes=" + fileLength + "-");
     var op = req.SendWebRequest();
 
+    // 这个是已写入的bytes的偏移量
     var index = 0;
     while (!op.isDone)
     {
         yield return null;
+        // 问题在这里，这个data和被下载文件的大小是一样的
         byte[] buff = req.downloadHandler.data;
         if (buff != null)
         {
             var length = buff.Length - index;
+            // 每次根据上次写入记录的偏移量，写入新下载的data
             fs.Write(buff, index, length);
             index += length;
             fileLength += length;
@@ -78,9 +84,6 @@ unityWebRequest.SendWebRequest();
     }
     // 后面省略细节
 ```
-
-这里的问题主要是GC，真机实测，下载过程中，内存会持续增长，文件越大内存增长越大。
-下载的文件过大，甚至会引起OOM(out of memory)崩溃。
 
 ### 推荐的方式
 
@@ -107,17 +110,17 @@ public class DownloadHandlerFileRange : DownloadHandlerScript
 }
 ```
 
+原因是：
+<https://docs.unity3d.com/2018.4/Documentation/ScriptReference/Networking.DownloadHandler.ReceiveData.html>
+
+<https://docs.unity3d.com/2018.4/Documentation/ScriptReference/Networking.DownloadHandlerScript-ctor.html>
+
 这样整个下载过程中，不会产生新的GC，内存是平稳的。
 
 完整的代码见：<https://github.com/zhaojunmeng/UnityDownloadHandlerScriptDemo/tree/main/Assets/Scripts>
 
 整个实现参考了：
 <https://gist.github.com/TouiSoraHe/19f2afeee1334cb8e42b3c8f2c283a65>
-
-原因是：
-<https://docs.unity3d.com/2018.4/Documentation/ScriptReference/Networking.DownloadHandler.ReceiveData.html>
-
-<https://docs.unity3d.com/2018.4/Documentation/ScriptReference/Networking.DownloadHandlerScript-ctor.html>
 
 ## 注意事项
 
