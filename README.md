@@ -110,12 +110,22 @@ public class DownloadHandlerFileRange : DownloadHandlerScript
 }
 ```
 
-原因是：
-<https://docs.unity3d.com/2018.4/Documentation/ScriptReference/Networking.DownloadHandler.ReceiveData.html>
+查看DownloadHandlerScript的构造函数文档，可以看到，上述的代码，在下载过程中，只分配了缓冲区大小的内存，下载的文件再大，也不会造成超过缓冲区大小的内存分配。这样整个下载过程中，不会产生新的GC，内存是平稳的。
 
-<https://docs.unity3d.com/2018.4/Documentation/ScriptReference/Networking.DownloadHandlerScript-ctor.html>
+```Text
+public DownloadHandlerScript (byte[] preallocatedBuffer);
 
-这样整个下载过程中，不会产生新的GC，内存是平稳的。
+创建可通过重复使用预分配的缓冲区将数据传递给回调的 DownloadHandlerScript。
+
+此构造函数会将此 DownloadHandlerScript 置于预分配模式。这会影响 DownloadHandler.ReceiveData 回调的操作。
+
+在预分配模式下，系统将重复使用 preallocatedBuffer 字节数组以将数据传递给 DownloadHandler.ReceiveData 回调，而非每次都会分配新缓冲区。系统不会在每次使用时都将数组归零，因此必须使用 DownloadHandler.ReceiveData 的 dataLength 参数来查看哪些字节是新字节。
+
+在这种模式下，DownloadHandlerScript 不会在下载或处理 HTTP 响应数据时分配任何内存。如果您的用例需要避免垃圾收集操作，建议您采用预分配模式。
+
+```
+
+参考：<https://docs.unity3d.com/cn/2019.4/ScriptReference/Networking.DownloadHandlerScript-ctor.html>
 
 完整的代码见：<https://github.com/zhaojunmeng/UnityDownloadHandlerScriptDemo/tree/main/Assets/Scripts>
 
@@ -126,9 +136,11 @@ public class DownloadHandlerFileRange : DownloadHandlerScript
 
 ### Strip的问题
 
-Android真机上，自定义的DownloadHandler无法收到任何回调的问题
+问题：Android真机上，继承自DownloadHandlerScript的子类无法收到任何回调的问题
 
-Managed Stripping Level: Medium
+原因：开启了Managed code stripping，且“Managed Stripping Level”在Medium及以上。导致回调代码被错误的strip掉了，回调无法触发。
+
+解决方案：在Assets/目录中，link.xml中（如果不存在，就自行添加），添加下面的部分，不裁剪UnityWebRequestModule的相关类。
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -137,6 +149,20 @@ Managed Stripping Level: Medium
 </linker>
 ```
 
+关于Managed code stripping的相关参考：<https://docs.unity3d.com/cn/current/Manual/ManagedCodeStripping.html>
+
 ### HTTP: 416
 
-<https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/416>
+问题：下载文件，HTTP的返回码返回了416
+
+```Text
+HTTP 416 Range Not Satisfiable 错误状态码意味着服务器无法处理所请求的数据区间。最常见的情况是所请求的数据区间不在文件范围之内，也就是说，Range 首部的值，虽然从语法上来说是没问题的，但是从语义上来说却没有意义。
+```
+
+解释：我们下载一个a.zip，有两种方式：
+一种是localFile命名为a.zip，直接开始断点续传下载
+另一种是命名为a.zip.tmp，开始断点续传下载，下载完成之后，重命名为a.zip。
+
+第一种方式，有可能本地文件已经下载完成，断点续传的时候，range-start的值已经就是文件的完整大小了，这个时候，就会返回HTTP416。这个时候就要自己判断一下，文件是否已经下载完毕了。
+
+416返回码参考：<https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status/416>
